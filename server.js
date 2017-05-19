@@ -7,9 +7,7 @@ server.get('/config.json', (req,res,next) =>{
   var config = {
       baseUrl: process.env.API_BASE_URL || 'https://amsfunctionssample7nvl3wurg4tuk.azurewebsites.net/'
   };
-  res.send(200, JSON.stringify(config), {
-      'content-type': 'application/json'
-  });
+  res.json(200, config);
 });
 
 server.get(/\/?.*/, restify.serveStatic({

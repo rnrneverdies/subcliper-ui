@@ -1,14 +1,13 @@
 (function(){
 
 // settings
-var baseUrl = 'https://amsfunctionssample7nvl3wurg4tuk.azurewebsites.net/';
+var baseUrl = '/';
 var assetsUrl = baseUrl + 'api/assets';
 var baseAssetUrl = baseUrl + 'api/assets/';
 var subclipsUrl = baseUrl + 'api/subclips';
-var refreshInterval = 5000; // 10 seconds
-
-// state store
-var jobsInProgress = [];
+var baseJobsUrl = baseUrl + 'api/subclips/jobs/';
+var tableRefreshInterval = 10000; // 10 seconds
+var jobRefreshInterval = 5000; // 5 seconds
 
 // initialize
 var keyboadShortcutConfig = new AMVE.AdobePremierProShortcutConfig();
@@ -27,25 +26,26 @@ $(function() {
     // load settings
     $.getJSON('/config.json', function(data) {
 
-        console.log(data, data.baseUrl);
-
         baseUrl = data.baseUrl;
         assetsUrl = baseUrl + 'api/assets';
         baseAssetUrl = baseUrl + 'api/assets/';
         subclipsUrl = baseUrl + 'api/subclips';
+        baseJobsUrl = baseUrl + 'api/subclips/jobs/';
 
         // initialize Azure Media Player + Azure Media Video Editor
         amp('ampEditor', playerOptions);
 
         var table = $('table').DataTable({
             serverSide: true,
-            processing: true,
+            bSort : false,
+            searching: false,
             ajax: function (data, callback, settings) {
-                data = JSON.parse(data);
-                console.log(data, callback, settings);
                 $.getJSON( assetsUrl + '?skip=' + data.start + '&take=' + data.length,
                     function (data) {
-                        data.recordsTotal = 15;
+                        // renaming Data as data
+                        data.data = data.Data;
+                        delete data.Data;
+                        data.recordsFiltered = data.recordsTotal = data.Total;
                         callback(data);
                     }
                 );
@@ -64,8 +64,7 @@ $(function() {
         // self update
         setInterval( function () {
             table.ajax.reload( null, false );
-            console.log('reload');
-        }, refreshInterval);
+        }, tableRefreshInterval);
 
         function totalSize(data) {
             return formatBytes(
@@ -93,14 +92,13 @@ $(function() {
 $(document).on('click', 'a[data-download-asset]', function() {
     var that = this,
         assetId = $(this).data('download-asset'),
-        old = $(this).html(),
+        oldState = $(this).html(),
         url = baseAssetUrl + encodeURIComponent(assetId.substring('nb:cid:UUID:'.length));
 
     $(this).html('<div class="ui active inline mini loader"></div>');
 
     $.getJSON(url, function(asset) {
-        console.log(asset);
-        $(that).html(old);
+        $(that).html(oldState);
         alert('not yet implemented');
     });
 });
@@ -114,7 +112,6 @@ $(document).on('click', 'a[data-edit-asset]', function() {
     $(this).html('<div class="ui active inline mini loader"></div>');
 
     $.getJSON(url, function(asset) {
-        console.log(asset);
 
         $(that).html(oldState);
         $('#editor').removeAttr('style');
@@ -141,10 +138,12 @@ $(document).on('click', '#btnCloseEditor', function() {
 
 function onClipdataCallback(clipData) {
 
+    $('#btnCloseEditor').click();
+
     if (clipData) {
         var data = {
             SourceAssetId: amp('ampEditor').editingAssetId,
-            Name: clipData.title,
+            Name: clipData.title || 'No title',
             Start: clipData.markIn,
             End: clipData.markOut
         };
@@ -158,13 +157,51 @@ function onClipdataCallback(clipData) {
             success: function (response) {
                 if (response.JobId) {
                     response.Name = clipData.title;
-                    jobsInProgress.push(response);
+                    addJobFromReponse(response);
                 }
             },
             error: function(xhr, error) {
                 console.log('error', error);
             }
         });
+    } else {
+        alert('Something went wrong while processing the subclip metadata, try again later.');
+    }
+}
+
+function addJobFromReponse(response) {
+    $('#notifications').append(createNotification(
+        response.JobId,
+        'Subclipping Job: ' + response.Name,
+        'Starting'
+    ));
+
+    var intervalId = setInterval(function() {
+        url = baseJobsUrl + encodeURIComponent(response.JobId.substring('nb:jid:UUID:'.length));
+        $.getJSON(url, function(data) {
+            updateNotification(response.JobId, data.State);
+        });
+    }, jobRefreshInterval);
+}
+
+function createNotification(id, title, state) {
+    id = id.replace(/[:-]/g, '');
+    var notification = '<div id="' + id + '" class="ui icon message">' +
+                        '<i class="notched circle loading icon"></i>' +
+                        '<div class="content">' +
+                        '<div class="header">' + title + '</div>' +
+                        '<p>' + state + '</p>' +
+                        '</div></div>';
+    return notification;
+}
+
+function updateNotification(id, state) {
+    var states = [ 'Finished', 'Canceled', 'Error'];
+    id = id.replace(/[:-]/g, '');
+    if (states.indexOf(state) === -1) {
+        $('#' + id).find('p').text(state);
+    } else {
+        $('#' + id).remove();
     }
 }
 
