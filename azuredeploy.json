@@ -1,0 +1,78 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "appServiceName": {
+            "type": "string",
+            "metadata": {
+                "description": "App Service application name"
+            }
+        },
+        "azureFunctionsUrl": {
+            "type": "string",
+            "metadata": {
+                "description": "URL of the azure functions backend"
+            }
+        }
+    },
+    "variables": {
+        "appServicePlanName":"[concat('serviceplan', uniqueString(resourceGroup().id))]",
+        "appServiceTier": "Free",
+        "appServiceWorkerSize": "0"
+    },
+    "resources": [
+        {
+            "apiVersion": "2014-06-01",
+            "name": "[variables('appServicePlanName')]",
+            "type": "Microsoft.Web/serverfarms",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "name": "[variables('appServicePlanName')]",
+                "appServiceTier": "[variables('appServiceTier')]",
+                "workerSize": "[variables('appServiceWorkerSize')]",
+                "hostingEnvironment": "",
+                "numberOfWorkers": 1
+            }
+        },
+        {
+            "apiVersion": "2015-08-01",
+            "name": "[parameters('appServiceName')]",
+            "type": "Microsoft.Web/sites",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "[concat('hidden-related:', resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', parameters('appServiceName'))]": "Resource",
+                "displayName": "Website"
+            },
+            "dependsOn": [
+                 "[concat('Microsoft.Web/serverFarms/', variables('appServicePlanName'))]"
+            ],
+            "resources": [
+                {
+                    "apiVersion": "2015-08-01",
+                    "name": "web",
+                    "type": "sourcecontrols",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Web/Sites', concat(parameters('appServiceName')))]"
+                    ],
+                    "properties": {
+                        "repoUrl": "https://github.com/rnrneverdies/subcliper-ui.git",
+                        "branch": "master",
+                        "IsManualIntegration": true
+                    }
+                }
+            ],
+            "properties": {
+                "name": "[parameters('appServiceName')]",
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+                "siteConfig": {
+                    "appSettings": [
+                        {
+                            "Name": "API_BASE_URL",
+                            "Value": "[parameters('azureFunctionsUrl')]"
+                        }
+                    ]
+                }
+            }
+        }
+    ]
+}
